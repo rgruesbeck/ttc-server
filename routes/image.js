@@ -1,5 +1,6 @@
 var db = require('../services/levelDB.js');
 var store = require('../services/contentBlobStore.js');
+var ipfs = require('../services/ipfsBlobStore.js');
 
 var through = require('through2');
 var parallel = require('async/parallel');
@@ -22,8 +23,9 @@ function imageLoad(req, res){
 }
 
 function imageUpload(req, res){
-  //write image to blob store
-  var w = store.createWriteStream(function (err, metadata) {
+  var w = store.createWriteStream();
+  req.pipe(w);
+  w.on('finish', function () {
     var now = new Date().toISOString();
     var nowkey = 'images-recent!' + now + '!' + w.key;
     db.batch([
@@ -33,76 +35,69 @@ function imageUpload(req, res){
       if (err) res.end(err + '\n');
       else res.end(
         JSON.stringify({
-          URI: 'http:/localhost:5000/images/'.concat(metadata.key),
-          IPFS: metadata.key
+          URI: '/images/'.concat(w.key),
+          IPFS: w.key
         }) + '\n'
       );
     });
   });
-  req.pipe(w);
 };
 
 // experiments here
 function imageUploadHandler(req, res){
-  parallel([
-    function(callback) {
-      setTimeout(function() {
-        var now = new Date().toISOString();
-        var nowkey = 'images-recent!' + now + '!' + w.key;
-        callback(null, 'create keys');
-      }, 200);
+  parallel({
+    local: function(cb) {
+      //content store
+      var ws = store.createWriteStream(function (err, metadata) {
+        if (err) cb(err);
+        cb(null, metadata.key);
+      });
+      req.pipe(ws);
     },
-    function(callback) {
-      setTimeout(function() {
-        callback(null, 'fs store', nowkey);
-      }, 200);
+    ipfs: function(cb) {
+      //ipfs store
+      cb(null, 'ipfs hash');
     },
-    function(callback) {
-      setTimeout(function() {
-        callback(null, 'ipfs store');
-      }, 100);
-    },
-  ],
-  function(err, results) {
-    console.log(results);
-    res.end('thanks!');
+  },
+  function(err, hash) {
+    if (err) res.end(err + '\n');
+    console.log(hash);
+    var now = new Date().toISOString();
+    var nowkey = 'images-recent!' + now + '!' + hash.local;
+
     db.batch([
-      { type: 'put', key: 'images!' + w.key, value: 0 },
+      { type: 'put', key: 'images!' + hash.local, value: 0 },
       { type: 'put', key: nowkey, value: 0 }
     ], function (err) {
       if (err) res.end(err + '\n');
       else res.end(
         JSON.stringify({
-          httpURI: 'http:/localhost:5000/'.concat(metadata.key),
-          ipfsURI: metadata.key
+          URI: '/images/'.concat(hash.local),
+          IPFS: hash.ipfs
         }) + '\n'
       );
     });
   });
 }
 
-function fsStore(){
+function ipfsStore(req, res){
   var w = store.createWriteStream();
+  var ws = ipfs.createWriteStream({ name: 'cat.jpg' });
   req.pipe(w);
-}
+  req.pipe(ws);
 
-function ipfsStore(){
-  var ipfsBlobStore = require('ipfs-blob-store');
-  var options = {
-    port: 5001,
-    host: '127.0.0.1',
-    baseDir: '/',
-    flush: true
-  };
+  ws.end(function() {
+    var rs = store.createReadStream({
+      key: ws.key
+    });
 
-  var store = ipfsBlobStore(options);
-
-  var ws = store.createWriteStream();
-  return ws;
+    rs.pipe(res);
+  });
 }
 
 module.exports = function(){
   this.addRoute('GET /images', imageList);
   this.addRoute('GET /images/:hash', imageLoad);
   this.addRoute('POST /images', imageUpload);
+  this.addRoute('POST /ipfs', ipfsStore);
 };
