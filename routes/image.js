@@ -23,6 +23,7 @@ function imageLoad(req, res){
 }
 
 function imageUpload(req, res){
+  res.setHeader('content-type', 'image/jpeg');
   var w = store.createWriteStream();
   req.pipe(w);
   w.on('finish', function () {
