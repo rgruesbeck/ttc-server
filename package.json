@@ -7,6 +7,7 @@
     "async": "^2.6.0",
     "body": "^5.1.0",
     "content-addressable-blob-store": "^4.6.0",
+    "ipfs-blob-store": "^1.1.2",
     "level": "^2.0.1",
     "routes": "^2.1.0",
     "through2": "^2.0.3"
