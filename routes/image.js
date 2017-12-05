@@ -32,13 +32,18 @@ function imageUpload(req, res){
       { type: 'put', key: 'images!' + w.key, value: 0 },
       { type: 'put', key: nowkey, value: 0 }
     ], function (err) {
-      if (err) res.end(err + '\n');
-      else res.end(
-        JSON.stringify({
-          URI: '/images/'.concat(w.key),
-          IPFS: w.key
-        }) + '\n'
-      );
+      if (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(err);
+      } else {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            URI: '/images/'.concat(w.key),
+            IPFS: w.key
+          })
+        );
+      }
     });
   });
 };

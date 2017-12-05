@@ -11,8 +11,13 @@ function cardCreate(req, res){
       params.id
     );
     db.put(key, params, function (err) {
-      if (err) res.end(err);
-      else res.end(JSON.stringify(params));
+      if (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(err);
+      } else {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(params));
+      }
     });
   });
 };
