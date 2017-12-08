@@ -18,7 +18,7 @@ function imageList(req, res){
     .pipe(res);
 };
 
-function imageShow(req, res){
+function imageShow(req, res, match){
   var r = store.createReadStream({ key: match.params.key });
   r.on('error', function (error) { send.error(res, error); });
   r.pipe(res);
