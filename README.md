@@ -4,11 +4,11 @@ Images are then content addressable by either sha256 or ipfs hash
 
 ## Routes
 ### POST /images "store image"
-### GET /images/<sha256> "get image"
+### GET /images/:sha256 "get image"
 ### GET /images "list images"
 
 ### POST /cards "store card"
-### GET /cards/<key> "get card"
+### GET /cards/:key "get card"
 ### GET /cards "list images"
 
 ## Install & Setup
