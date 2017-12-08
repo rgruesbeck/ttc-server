@@ -1,109 +1,89 @@
-var db = require('../services/levelDB.js');
-var store = require('../services/contentBlobStore.js');
-var ipfs = require('../services/ipfsBlobStore.js');
+var db = require('../services/leveldb.js');
+var store = require('../services/store.js');
+var ipfs = require('../services/ipfs.js');
+var JSONStream = require('JSONStream');
+var send = require('../services/send.js');
+var passthrough = require('stream').PassThrough;
 
 var through = require('through2');
-var parallel = require('async/parallel');
+var async = require('async');
 
 function imageList(req, res){
-  var r = db.createReadStream({
-    gt: 'images-recent!',
-    lt: 'images-recent!~'
-  });
-  r.pipe(through.obj(function (row, enc, next) {
-    this.push(row.key.split('!')[2] + '\n');
-    next();
-  })).pipe(res);
+  res.writeHead(200, { 'Content-Type': 'application/json' });
+  db.createReadStream({
+    gt: 'image!',
+    lt: 'image!~'
+  })
+    .pipe(JSONStream.stringify())
+    .pipe(res);
 };
 
-function imageLoad(req, res){
-  var r = store.createReadStream({ key: req.url.slice(1) });
-  r.on('error', function (err) { res.end(err + '\n'); });
+function imageShow(req, res){
+  var r = store.createReadStream({ key: match.params.key });
+  r.on('error', function (error) { send.error(res, error); });
   r.pipe(res);
 }
 
 function imageUpload(req, res){
-  res.setHeader('content-type', 'image/jpeg');
-  var w = store.createWriteStream();
-  req.pipe(w);
-  w.on('finish', function () {
-    var now = new Date().toISOString();
-    var nowkey = 'images-recent!' + now + '!' + w.key;
-    db.batch([
-      { type: 'put', key: 'images!' + w.key, value: 0 },
-      { type: 'put', key: nowkey, value: 0 }
-    ], function (err) {
-      if (err) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(err);
-      } else {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(
-          JSON.stringify({
-            URI: '/images/'.concat(w.key),
-            IPFS: w.key
-          })
-        );
-      }
-    });
-  });
-};
+  // todo: only accept images
 
-// experiments here
-function imageUploadHandler(req, res){
-  parallel({
-    local: function(cb) {
-      //content store
-      var ws = store.createWriteStream(function (err, metadata) {
-        if (err) cb(err);
-        cb(null, metadata.key);
+  // split request stream
+  var storeReq = new passthrough; req.pipe(storeReq);
+  var ipfsReq = new passthrough; req.pipe(ipfsReq);
+
+  // add image data to db
+  async.auto({
+    store: function(cb) {
+      // add image to store
+      var ws = store.createWriteStream(function(error, metadata) {
+        if (error) { cb(error); }
+        else {
+          cb(null, {
+            key: metadata.key,
+            type: req.headers['content-type'],
+            name: req.headers['content-name'],
+            uri: ''.concat('/images/', metadata.key)
+          });
+        }
       });
-      req.pipe(ws);
+      storeReq.pipe(ws);
     },
     ipfs: function(cb) {
-      //ipfs store
-      cb(null, 'ipfs hash');
+      // add image to ipfs
+      ipfs.util.addFromStream(ipfsReq, function(error, result) {
+        if (error) { cb(error.toString()); }
+        else {
+          cb(null, result);
+        }
+      });
     },
-  },
-  function(err, hash) {
-    if (err) res.end(err + '\n');
-    console.log(hash);
-    var now = new Date().toISOString();
-    var nowkey = 'images-recent!' + now + '!' + hash.local;
-
-    db.batch([
-      { type: 'put', key: 'images!' + hash.local, value: 0 },
-      { type: 'put', key: nowkey, value: 0 }
-    ], function (err) {
-      if (err) res.end(err + '\n');
-      else res.end(
-        JSON.stringify({
-          URI: '/images/'.concat(hash.local),
-          IPFS: hash.ipfs
-        }) + '\n'
-      );
-    });
-  });
-}
-
-function ipfsStore(req, res){
-  var w = store.createWriteStream();
-  var ws = ipfs.createWriteStream({ name: 'cat.jpg' });
-  req.pipe(w);
-  req.pipe(ws);
-
-  ws.end(function() {
-    var rs = store.createReadStream({
-      key: ws.key
-    });
-
-    rs.pipe(res);
+    db: [ 'store', 'ipfs', function(results, cb) {
+      // write image metadata to db
+      var key = ''.concat('image!', results.store.key);
+      var value = {
+        key: results.store.key,
+        uri: results.store.uri,
+        ipfs: results.ipfs[0].hash,
+        type: results.store.type,
+        name: results.store.name
+      };
+      db.put(key, value, function(error) {
+        if (error) { cb(error); }
+        else {
+          cb(null, value);
+        }
+      });
+    }]
+  }, function(error, results) {
+    if (error) { send.error(res, error); }
+    else {
+      send.data(res, results.db);
+    }
   });
 }
 
 module.exports = function(){
   this.addRoute('GET /images', imageList);
-  this.addRoute('GET /images/:hash', imageLoad);
+  this.addRoute('GET /images/:key', imageShow);
   this.addRoute('POST /images', imageUpload);
-  this.addRoute('POST /ipfs', ipfsStore);
 };

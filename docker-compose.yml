@@ -1,0 +1,25 @@
+version: '2'
+services:
+  server:
+    image: node:8.2.0
+    command: npm start
+    working_dir: /server
+    ports:
+      - 5000:5000
+    volumes:
+      - ./:/server
+    networks:
+      - current
+  ipfs:
+    image: jbenet/go-ipfs
+    working_dir: /
+    ports:
+      - 4001:4001
+      - 5001:5001
+      - 8080:8080
+    volumes:
+      - ./ipfs:/data/ipfs
+    networks:
+      - current
+networks:
+  current:

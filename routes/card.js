@@ -1,27 +1,113 @@
-var db = require('../services/levelDB.js');
+var util = require('util');
+var db = require('../services/leveldb.js');
+var store = require('../services/store.js');
+var BitMark = require('../services/bitmark.js');
+var through = require('through2');
+var JSONStream = require('JSONStream');
 var jsonBody = require('body/json');
-var parallel = require('async/parallel');
+var send = require('../services/send.js');
+var async = require('async');
+var validate = require('../schemas/card.js');
 
-function cardCreate(req, res){
-  jsonBody(req, res, function (err, params) {
-    if (err) return console.error(err);
-    var key = 'card!'.concat(
-      Math.random().toString(16).slice(2),
-      '!',
-      params.id
-    );
-    db.put(key, params, function (err) {
-      if (err) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(err);
-      } else {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(params));
-      }
-    });
+function cardList(req, res){
+  res.writeHead(200, { 'Content-Type': 'application/json' });
+  db.createReadStream({
+    gt: 'card!',
+    lt: 'card!~'
+  })
+    .pipe(JSONStream.stringify())
+    .pipe(res);
+};
+
+function cardShow(req, res, match){
+  db.get(match.params.id, function (error, value) {
+    if (error) {
+      send.error(res, error);
+    } else {
+      send.data(res, value);
+    }
   });
 };
 
+function cardCreate(req, res){
+  async.auto({
+    // parse & validate card data
+    card: function(cb) {
+      jsonBody(req, res, function (error, params) {
+        if (error) { cb(error); }
+        else {
+          // todo: needs better validation
+          var valid = validate(params);
+          if (!valid) { cb(validate.errors); }
+          else {
+            cb(null, params);
+          }
+        }
+      });
+    },
+    verifyImage: ['card', function(results, cb) {
+      // make sure we have a matching image in the store and get its path
+      var imageKey = results.card.media[0].resolve;
+      store.resolve({ key: imageKey }, function(error, path) {
+        if (error) { cb(error); }
+        else {
+          db.get(''.concat('image!', imageKey), function(error, value) {
+            if (error) { cb(error); }
+            else {
+              cb(null, value);
+            }
+          })
+        }
+      });
+    }],
+    bitmark: ['verifyImage', function(results, cb) {
+      // register matching image with bitmark
+      // todo: needs work
+
+      /*
+      var bitmark = new BitMark();
+      var bm = bitmark.issue(results.verifyImage, {
+        propertyMetadata: results.card
+      })
+          .then(function(result) {
+            cb(null, result);
+          })
+          .catch(function(error) {
+            cb(error);
+          });
+      */
+
+      cb(null, 'bitmark');
+    }],
+    db: [ 'card', 'bitmark', function(results, cb) {
+      // write image metadata to db
+      var key = ''.concat('card!', Math.random().toString(16).slice(2));
+      var value = {
+        id: key,
+        title: results.card.title,
+        description: results.card.description,
+        authors: results.card.authors,
+        media: [ results.verifyImage ],
+        metadata: [ { bitmark: results.bitmark } ]
+      };
+      db.put(key, value, function(error) {
+        if (error) { cb(error); }
+        else {
+          cb(null, value);
+        }
+      });
+    }]
+  }, function(error, results) {
+    if (error) { send.error(res, error); }
+    else {
+      send.data(res, results.db);
+    }
+  });
+}
+
 module.exports = function(){
+  this.addRoute('GET /cards', cardList);
+  this.addRoute('GET /cards/:id', cardShow);
   this.addRoute('POST /cards', cardCreate);
 };
+
