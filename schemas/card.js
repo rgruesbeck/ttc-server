@@ -6,8 +6,31 @@ var schema = {
   "properties": {
     "title": { "type": "string" },
     "description": { "type": "string" },
-    "authors": { "type": "array" },
-    "media": { "type": "array" },
+    "authors": {
+      "type": "array",
+      "contains": {
+        "type": "object",
+        "properties": {
+          "role": { "type": "string" },
+          "name": { "type": "string" },
+          "email": { "type": "string" }
+        },
+        "required": [
+          "role",
+          "name",
+          "email"
+        ]
+      }
+    },
+    "media": {
+      "type": "array",
+      "contains": {
+        "type": "object",
+        "properties": {
+          "resolve": { "type": "string" }
+        }
+      }
+    },
     "metadata": { "type": "array" }
   },
   "required": [

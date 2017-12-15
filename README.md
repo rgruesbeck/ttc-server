@@ -23,11 +23,19 @@ docker-compose run server npm install
 docker-compose up
 ```
 
+## Test
+```sh
+docker-compose up
+```
+In another shell, run 
+```sh
+npm test
+```
+
 ### urls
 - Images: [localhost:5000/images](http://localhost:5000/images)
 - Cards: [localhost:5000/cards](http://localhost:5000/cards)
 - Ipfs Web Console: [localhost:5001/webui](http://localhost:5001/webui)
 
 ## Todo
-- Bitmark needs work: possibly do this as a scheduled job, where images are marked as registered after success?
-- Validation & working well with react client.
+- Get testing database

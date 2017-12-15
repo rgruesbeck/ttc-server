@@ -46,38 +46,34 @@ function cardCreate(req, res){
       });
     },
     verifyImage: ['card', function(results, cb) {
-      // make sure we have a matching image in the store and get its path
+      // make sure we have a matching image in the store and get its information
       var imageKey = results.card.media[0].resolve;
       store.resolve({ key: imageKey }, function(error, path) {
-        if (error) { cb(error); }
+        if (error || !path) { cb('Error: Valid Image Not Found'); }
         else {
           db.get(''.concat('image!', imageKey), function(error, value) {
-            if (error) { cb(error); }
+            if (error) { cb('Error: Valid Image Not Found'); }
             else {
-              cb(null, value);
+              cb(null, {
+                path: path,
+                image: value
+              });
             }
-          })
+          });
         }
       });
     }],
     bitmark: ['verifyImage', function(results, cb) {
-      // register matching image with bitmark
-      // todo: needs work
-
-      /*
       var bitmark = new BitMark();
-      var bm = bitmark.issue(results.verifyImage, {
+      var bm = bitmark.issue(results.verifyImage.path, {
         propertyMetadata: results.card
       })
           .then(function(result) {
             cb(null, result);
           })
           .catch(function(error) {
-            cb(error);
+            cb({ error: "2", message: "Error issuing bitmarks", bitmark_error: error.message });
           });
-      */
-
-      cb(null, 'bitmark');
     }],
     db: [ 'card', 'bitmark', function(results, cb) {
       // write image metadata to db
